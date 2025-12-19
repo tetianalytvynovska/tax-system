@@ -2,8 +2,8 @@ TaxAgent
 
 Цей проєкт містить:
 
-- Backend (Node.js + Express + SQLite, директорія `backend/`)
-- Frontend (React + Vite, директорія `frontend/`)
+- Backend 
+- Frontend
 - Ролі:
   - Адміністратор (2FA по email)
   - Звичайні користувачі (реєструються самостійно)
