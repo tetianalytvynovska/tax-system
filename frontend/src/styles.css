@@ -1,0 +1,241 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header.app-header {
+  background: #111827;
+  color: #f9fafb;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-logo {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.app-nav a {
+  margin-right: 16px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.app-nav a.active-link {
+  text-decoration: underline;
+}
+
+main.app-main {
+  flex: 1;
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.card-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f9fafb;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.stat-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stat-caption {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.form-input,
+select.form-input,
+textarea.form-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+}
+
+.btn {
+  border-radius: 999px;
+  border: none;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: #f9fafb;
+}
+
+.btn-secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.btn-link {
+  background: transparent;
+  color: #2563eb;
+  padding: 0;
+}
+
+.btn + .btn {
+  margin-left: 8px;
+}
+
+.error-text {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.muted-text {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+table.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.table th,
+table.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+table.table th {
+  background: #f9fafb;
+  font-weight: 500;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.filters-row .form-group {
+  margin-bottom: 0;
+  min-width: 150px;
+}
+
+footer.app-footer {
+  padding: 8px 24px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.link-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.link-list li {
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  margin-left: 4px;
+}
