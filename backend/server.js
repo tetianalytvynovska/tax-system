@@ -6,6 +6,8 @@ const bcrypt = require("bcryptjs");
 const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
 const QRCode = require("qrcode");
+const path = require("path");
+const crypto = require("crypto");
 
 const db = require("./db");
 
@@ -74,125 +76,193 @@ function audit(userId, action, details) {
 }
 
 async function generateUserOfficialPdf(res, user, report) {
-  const doc = new PDFDocument({ margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="tax_declaration_${report.id}.pdf"`
+    `inline; filename="tax_declaration_${report.id}.pdf"`
   );
   doc.pipe(res);
 
-  // Header
-  doc.font("Helvetica-Bold").fontSize(14).text("МІНІСТЕРСТВО ФІНАНСІВ УКРАЇНИ", {
+  // --- Fonts (UA Unicode) ---
+  const fontRegular = path.join(__dirname, "assets", "fonts", "DejaVuSans.ttf");
+  const fontBold = path.join(__dirname, "assets", "fonts", "DejaVuSans-Bold.ttf");
+  doc.registerFont("DejaVu", fontRegular);
+  doc.registerFont("DejaVuBold", fontBold);
+
+  // ================= HEADER =================
+  // ================= HEADER =================
+  doc.font("DejaVuBold").fontSize(16).text("TaxAgent", { align: "center" });
+  doc
+    .font("DejaVu")
+    .fontSize(11)
+    .text("Електронний податковий сервіс", { align: "center" });
+
+  doc.moveDown(0.8);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+
+  // ================= TITLE =================
+  doc.moveDown(1);
+  doc.font("DejaVuBold").fontSize(15).text("ПОДАТКОВА ДЕКЛАРАЦІЯ", {
     align: "center"
   });
-  doc.fontSize(12).text(
-    "ІНФОРМАЦІЙНА СИСТЕМА TAXAGENT – супровід податкової звітності фізичних осіб",
-    { align: "center" }
+
+  // Line under title: "з податку на ..." (from admin dictionary / stored tax_type)
+  const taxNameRaw = String(report.tax_type || report.title || "").trim();
+  let taxNameForTitle = taxNameRaw;
+  // Convert "Податок на ..." -> "податку на ..." (simple UA grammar tweak)
+  if (/^Податок\s+на\s+/i.test(taxNameRaw)) {
+    taxNameForTitle = taxNameRaw.replace(/^Податок\s+на\s+/i, "податку на ");
+  } else if (/^Податок\s+з\s+/i.test(taxNameRaw)) {
+    taxNameForTitle = taxNameRaw.replace(/^Податок\s+з\s+/i, "податку з ");
+  } else if (/^податок\s+/i.test(taxNameRaw)) {
+    taxNameForTitle = taxNameRaw.replace(/^податок\s+/i, "податку ");
+  }
+  // Ensure starts with lowercase (Ukrainian style in sentence)
+  taxNameForTitle = taxNameForTitle
+    ? taxNameForTitle.charAt(0).toLowerCase() + taxNameForTitle.slice(1)
+    : "податку";
+  doc.font("DejaVu").fontSize(11).text(`з ${taxNameForTitle}`, {
+    align: "center"
+  });
+
+  doc.moveDown(0.8);
+  doc.font("DejaVu").fontSize(11);
+  doc.text(`Номер декларації: ${report.declaration_number || "—"}`);
+  doc.text(
+    `Дата формування: ${new Date().toLocaleDateString("uk-UA")}`
   );
-  doc
-    .fontSize(10)
-    .text("Код ЄДРПОУ: 00000000 · м. Київ, вул. Хрещатик, 1, 01001", {
-      align: "center"
-    });
-  doc.moveDown();
-  doc
-    .moveTo(50, doc.y)
-    .lineTo(550, doc.y)
-    .stroke();
 
-  doc.moveDown();
-  doc.fontSize(14).text("ПОДАТКОВА ДЕКЛАРАЦІЯ", { align: "center" });
-  doc.moveDown(0.5);
-  doc.fontSize(11).text(`Номер декларації: ${report.declaration_number || "—"}`);
-  doc.text(`Дата формування: ${new Date().toLocaleDateString("uk-UA")}`);
-  doc.moveDown();
-
-  // Taxpayer info
-  doc.fontSize(11).text("Відомості про платника податку:", { underline: true });
-  doc.moveDown(0.5);
+  // ================= USER INFO =================
+  doc.moveDown(1);
+  doc.font("DejaVuBold").text("Відомості про платника податку:");
+  doc.moveDown(0.4);
+  doc.font("DejaVu");
   doc.text(`ПІБ: ${user.name}`);
   doc.text(`РНОКПП / ІПН: ${user.ipn}`);
   doc.text(`Email: ${user.email}`);
-  doc.text(`Адреса: ${report.address || "—"}`);
-  doc.moveDown();
+  // Address removed by requirements (do not print address in the PDF)
 
-  // Table
-  doc.fontSize(11).text("Відомості про зобов'язання:", { underline: true });
-  doc.moveDown(0.5);
+  // ================= TABLE =================
+  doc.moveDown(1);
+  doc.font("DejaVuBold").text("Відомості про зобовʼязання:");
+  doc.moveDown(0.6);
 
-  const startX = 50;
-  let y = doc.y;
-  const col = (text, x, width) => {
-    doc.text(String(text), x, y, { width });
-  };
+  const tableX = 50;
+  const tableY = doc.y;
+  const rowH = 26;
 
-  doc.font("Helvetica-Bold");
-  col("№", startX, 20);
-  col("Назва податку", startX + 25, 180);
-  col("База, грн", startX + 210, 80);
-  col("Ставка, %", startX + 295, 60);
-  col("Податок, грн", startX + 360, 80);
-  col("Разом, грн", startX + 445, 80);
-  y += 16;
-  doc.font("Helvetica");
-  col(1, startX, 20);
-  col(report.tax_type || report.title, startX + 25, 180);
-  col(report.base_amount.toFixed(2), startX + 210, 80);
-  col(report.tax_rate.toFixed(2), startX + 295, 60);
-  col(report.tax_amount.toFixed(2), startX + 360, 80);
-  col(report.total_amount.toFixed(2), startX + 445, 80);
-  y += 18;
-  doc.moveDown(3);
+  const colW = [30, 190, 80, 60, 80, 80];
+  const headers = [
+    "№",
+    "Назва податку",
+    "База, грн",
+    "Ставка, %",
+    "Податок",
+    "Разом"
+  ];
+
+  const tableWidth = colW.reduce((a, b) => a + b, 0);
+
+  // Header background (light)
+  doc
+    .fillColor("#f1f5f9")      // світло-сірий фон
+    .rect(tableX, tableY, tableWidth, rowH)
+    .fill();
 
   doc
-    .fontSize(11)
-    .text(`Усього до сплати: ${report.total_amount.toFixed(2)} грн`);
-  if (report.due_date) {
-    doc.text(`Термін сплати: ${report.due_date}`);
-  }
-  doc.moveDown(2);
+    .strokeColor("#000000")    // чорна рамка
+    .rect(tableX, tableY, tableWidth, rowH)
+    .stroke();
 
+  doc.fillColor("#334155");    // темно-сірий для назв колонок
+
+
+  doc.font("DejaVuBold").fontSize(9);
+  let x = tableX;
+  headers.forEach((h, i) => {
+    doc.text(h, x + 4, tableY + 8, {
+      width: colW[i] - 8,
+      align: i >= 2 ? "right" : "left"
+    });
+    x += colW[i];
+  });
+
+  // Row
+  const rowY = tableY + rowH;
+  doc.rect(tableX, rowY, tableWidth, rowH).stroke();
+
+  doc.font("DejaVu").fontSize(9);
+  const row = [
+    "1",
+    report.tax_type || report.title,
+    report.base_amount.toFixed(2),
+    report.tax_rate.toFixed(2),
+    report.tax_amount.toFixed(2),
+    report.total_amount.toFixed(2)
+  ];
+
+  x = tableX;
+  row.forEach((v, i) => {
+    doc.text(String(v), x + 4, rowY + 8, {
+      width: colW[i] - 8,
+      align: i >= 2 ? "right" : "left"
+    });
+    x += colW[i];
+  });
+
+  doc.y = rowY + rowH + 10;
+
+  // ================= TOTAL =================
+  const rightX = 350;
+  doc.font("DejaVuBold").fontSize(11);
+  doc.text("Усього до сплати:", rightX);
+  doc.font("DejaVu").fontSize(11);
+  doc.text(`${report.total_amount.toFixed(2)} грн`, rightX);
+  if (report.due_date) {
+    doc.fontSize(9).text(`Термін сплати: ${report.due_date}`, rightX);
+  }
+
+  // ================= QR =================
   try {
-    const payload = {
-      id: report.id,
-      declaration_number: report.declaration_number,
-      user_email: user.email,
-      ipn: user.ipn
+    const qrPayload = {
+      declaration: report.declaration_number,
+      user: user.email
     };
-    const qrDataUrl = await QRCode.toDataURL(JSON.stringify(payload));
-    const base64 = qrDataUrl.split(",")[1];
-    const buffer = Buffer.from(base64, "base64");
+    const qrData = await QRCode.toDataURL(JSON.stringify(qrPayload));
+    const img = Buffer.from(qrData.split(",")[1], "base64");
+
     const qrX = 380;
-    const qrY = doc.y;
-    doc.image(buffer, qrX, qrY, { width: 120 });
+    const qrY = doc.y + 20;
+    doc.image(img, qrX, qrY, { width: 120 });
     doc
       .fontSize(8)
       .text(
-        "QR-код для перевірки достовірності декларації в системі TAXAGENT",
+        "QR-код для перевірки достовірності декларації в системі TaxAgent",
         qrX,
         qrY + 125,
         { width: 120, align: "center" }
       );
   } catch (e) {
-    console.error("QR error", e);
+    console.error("QR error:", e.message);
   }
 
-  doc.moveDown(6);
-  doc.fontSize(11).text("Відповідальний за подання декларації:", {
-    underline: true
-  });
-  doc.moveDown(2);
-  doc.text(`__________________________ /${user.name}/`);
-  doc.moveDown();
+  // ================= FOOTER =================
+  doc.moveDown(5);
+  doc.font("DejaVuBold").fontSize(11);
+  doc.text("Відповідальний за подання декларації:");
+  doc.moveDown(1.5);
+  doc.text(`__________________________ / ${user.name} /`);
+  doc.moveDown(0.8);
+  doc.font("DejaVu").fontSize(9);
   doc.text(`Дата: ${new Date().toLocaleDateString("uk-UA")}`);
-  doc.moveDown(2);
-  doc.fontSize(9).text("Затверджено електронною системою TAXAGENT", {
-    oblique: true
-  });
+  doc.moveDown(1);
+  doc.text("Затверджено електронною системою TAXAGENT", { oblique: true });
 
   doc.end();
 }
+
 
 async function generateAdminOfficialPdf(res, summary, reports, filters) {
   const doc = new PDFDocument({ margin: 50 });
@@ -203,7 +273,14 @@ async function generateAdminOfficialPdf(res, summary, reports, filters) {
   );
   doc.pipe(res);
 
-  doc.font("Helvetica-Bold").fontSize(14).text("МІНІСТЕРСТВО ФІНАНСІВ УКРАЇНИ", {
+  // Unicode fonts (UA Cyrillic)
+  const fontRegular = path.join(__dirname, "assets", "fonts", "DejaVuSans.ttf");
+  const fontBold = path.join(__dirname, "assets", "fonts", "DejaVuSans-Bold.ttf");
+  doc.registerFont("DejaVu", fontRegular);
+  try { doc.registerFont("DejaVuBold", fontBold); } catch (e) { /* fallback */ }
+  doc.font("DejaVu");
+
+  doc.font("DejaVuBold").fontSize(14).text("МІНІСТЕРСТВО ФІНАНСІВ УКРАЇНИ", {
     align: "center"
   });
   doc.fontSize(12).text(
@@ -622,7 +699,9 @@ app.get("/api/taxes", authMiddleware, (req, res) => {
 
 app.get("/api/tax/reports", authMiddleware, (req, res) => {
   try {
-    const { taxDefinitionId, fromDate, toDate } = req.query;
+    // Accept both camelCase and snake_case params (frontend compatibility)
+    const taxDefinitionId = req.query.taxDefinitionId ?? req.query.tax_definition_id;
+    const { fromDate, toDate } = req.query;
     if (fromDate && toDate && fromDate > toDate) {
       return res
         .status(400)
@@ -666,6 +745,13 @@ app.get("/api/tax/reports/:id", authMiddleware, (req, res) => {
 app.post("/api/tax/reports", authMiddleware, (req, res) => {
   try {
     let { title, taxDefinitionId, baseAmount, address } = req.body;
+    // Accept both camelCase and snake_case payloads
+    if (taxDefinitionId == null && req.body.tax_definition_id != null) {
+      taxDefinitionId = req.body.tax_definition_id;
+    }
+    if (baseAmount == null && req.body.base_amount != null) {
+      baseAmount = req.body.base_amount;
+    }
     if (!taxDefinitionId || baseAmount == null) {
       return res
         .status(400)
@@ -720,6 +806,152 @@ app.post("/api/tax/reports", authMiddleware, (req, res) => {
       JSON.stringify({ reportId, taxDefinitionId: def.id })
     );
     res.json({ id: reportId, declaration_number: declarationNumber });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Помилка сервера" });
+  }
+});
+
+// --- Update/delete tax reports (user side) ---
+
+app.patch("/api/tax/reports/:id", authMiddleware, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = db.getTaxReportById(id);
+    if (!existing) return res.status(404).json({ error: "Звіт не знайдено" });
+
+    // Access control
+    if (req.user.role !== "Administrator" && existing.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Доступ заборонено" });
+    }
+    if (existing.status !== "заплановано") {
+      return res.status(400).json({ error: "Редагування доступне лише для статусу \"заплановано\"" });
+    }
+
+    // Accept both camelCase and snake_case payloads
+    let taxDefinitionId = req.body.taxDefinitionId ?? req.body.tax_definition_id ?? existing.tax_definition_id;
+    let baseAmount = req.body.baseAmount ?? req.body.base_amount ?? existing.base_amount;
+    const address = (req.body.address ?? existing.address) || null;
+    const title = req.body.title ?? null;
+
+    if (!taxDefinitionId || baseAmount == null) {
+      return res.status(400).json({ error: "Оберіть податок і введіть базову суму" });
+    }
+
+    baseAmount = Number(baseAmount);
+    if (!Number.isFinite(baseAmount) || baseAmount <= 0) {
+      return res.status(400).json({ error: "Базова сума має бути числом більше 0" });
+    }
+
+    const def = db.getTaxDefinitionById(Number(taxDefinitionId));
+    if (!def) {
+      return res.status(400).json({ error: "Обраний податок не знайдено" });
+    }
+
+    const taxRate = Number(def.rate || 0);
+    const taxAmount = Number(((baseAmount * taxRate) / 100).toFixed(2));
+    const totalAmount = Number((baseAmount + taxAmount).toFixed(2));
+
+    let dueDate = null;
+    if (def.due_days != null) {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(def.due_days));
+      dueDate = d.toISOString().slice(0, 10);
+    }
+
+    db.updateTaxReport(id, {
+      title: title || def.name,
+      tax_type: def.name,
+      tax_definition_id: def.id,
+      base_amount: baseAmount,
+      tax_rate: taxRate,
+      tax_amount: taxAmount,
+      total_amount: totalAmount,
+      due_date: dueDate,
+      address
+    });
+
+    audit(req.user.id, "TAX_REPORT_UPDATE", JSON.stringify({ reportId: id }));
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Помилка сервера" });
+  }
+});
+
+app.delete("/api/tax/reports/:id", authMiddleware, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = db.getTaxReportById(id);
+    if (!existing) return res.status(404).json({ error: "Звіт не знайдено" });
+
+    if (req.user.role !== "Administrator" && existing.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Доступ заборонено" });
+    }
+    if (existing.status !== "заплановано") {
+      return res.status(400).json({ error: "Видалення доступне лише для статусу \"заплановано\"" });
+    }
+
+    db.deleteTaxReport(id);
+    audit(req.user.id, "TAX_REPORT_DELETE", JSON.stringify({ reportId: id }));
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Помилка сервера" });
+  }
+});
+
+// --- Mock: "Підписати та відправити" ---
+// НІКУДИ НЕ НАДСИЛАЄТЬСЯ. Лише:
+// 1) перевіряємо ключ (номінально)
+// 2) рахуємо SHA-256 (імітація підпису)
+// 3) міняємо статус на "подано"
+// 4) повертаємо хеш для відображення на фронті
+app.post("/api/tax/reports/:id/sign-send", authMiddleware, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const key = String(req.body?.key || "").trim();
+
+    if (!key || key.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Введіть тестовий ключ (мінімум 6 символів)" });
+    }
+
+    const existing = db.getTaxReportById(id);
+    if (!existing) return res.status(404).json({ error: "Звіт не знайдено" });
+
+    if (req.user.role !== "Administrator" && existing.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Доступ заборонено" });
+    }
+
+    if (existing.status !== "заплановано") {
+      return res
+        .status(400)
+        .json({ error: "Підписання доступне лише для статусу \"заплановано\"" });
+    }
+
+    const signatureHash = crypto
+      .createHash("sha256")
+      .update(key)
+      .digest("hex");
+
+    // Generate a nominal declaration number (for demo + better traceability)
+    const declNumber =
+      existing.declaration_number ||
+      `TA-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${id}`;
+
+    // Update status to "подано" (so UI blocks edit/delete)
+    db.raw
+      .prepare("UPDATE tax_reports SET status = ?, declaration_number = ? WHERE id = ?")
+      .run("подано", declNumber, id);
+
+    audit(
+      req.user.id,
+      "TAX_REPORT_SIGN_SEND",
+      JSON.stringify({ reportId: id, signatureHash, declaration_number: declNumber })
+    );
+    res.json({ success: true, status: "подано", signatureHash, declaration_number: declNumber });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Помилка сервера" });
@@ -911,80 +1143,4 @@ app.get("/api/tax/reports/:id/pdf", authMiddleware, async (req, res) => {
 const PORT = 5000;
 app.listen(PORT, () => {
   console.log("Backend listening on http://localhost:" + PORT);
-});
-
-// ===== STRICT USER-BOUND TAX REPORTS =====
-
-// Middleware для перевірки токена
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-
-  if (!token) return res.status(401).json({ error: "No token provided" });
-
-  jwt.verify(token, process.env.JWT_SECRET || "secretkey", (err, user) => {
-    if (err) return res.status(403).json({ error: "Invalid token" });
-    req.user = user;
-    next();
-  });
-}
-
-// CREATE TAX FORM (DECLARATION)
-app.post("/api/tax/reports", authenticateToken, async (req, res) => {
-  try {
-    const {
-      title,
-      tax_type,
-      base_amount,
-      tax_rate,
-      tax_amount,
-      total_amount,
-      due_date,
-      declaration_number,
-      address
-    } = req.body;
-
-    const user_id = req.user.id;
-
-    const result = await db.run(
-      `INSERT INTO tax_reports 
-      (user_id, title, tax_type, base_amount, tax_rate, tax_amount, total_amount, due_date, status, declaration_number, address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        user_id,
-        title || "Нова декларація",
-        tax_type,
-        base_amount,
-        tax_rate,
-        tax_amount,
-        total_amount,
-        due_date || null,
-        "pending",
-        declaration_number || null,
-        address || null
-      ]
-    );
-
-    res.json({ success: true, id: result.lastID });
-  } catch (err) {
-    console.error("CREATE REPORT ERROR:", err);
-    res.status(500).json({ error: "Failed to create report", details: err.message });
-  }
-});
-
-// GET ONLY MY DECLARATIONS
-app.get("/api/tax/reports", authenticateToken, async (req, res) => {
-  try {
-    const user_id = req.user.id;
-
-    const rows = await db.all(
-      `SELECT * FROM tax_reports WHERE user_id = ? ORDER BY created_at DESC`,
-      [user_id]
-    );
-
-    res.json(rows);
-  } catch (err) {
-    console.error("GET REPORTS ERROR:", err);
-    res.status(500).json({ error: "Failed to fetch reports", details: err.message });
-  }
 });

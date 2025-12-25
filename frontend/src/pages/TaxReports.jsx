@@ -1,41 +1,46 @@
 import api from "../api";
-import { useEffect, useState, useMemo } from "react";
-
-
-const API_URL = "http://localhost:5000";
+import { useEffect, useMemo, useState } from "react";
 
 export default function TaxReportsPage() {
   const [reports, setReports] = useState([]);
   const [taxes, setTaxes] = useState([]);
+
   const [selectedTaxId, setSelectedTaxId] = useState("");
   const [baseAmount, setBaseAmount] = useState("");
   const [taxRate, setTaxRate] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [address, setAddress] = useState("");
+
+  const [editingReportId, setEditingReportId] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
   const [error, setError] = useState("");
 
+  // Sign & send (mock)
+  const [signModalReport, setSignModalReport] = useState(null);
+  const [signKey, setSignKey] = useState("");
+  const [signError, setSignError] = useState("");
+  const [signSuccess, setSignSuccess] = useState("");
+  const [signLoading, setSignLoading] = useState(false);
+
+  // Filters
   const [filterTaxId, setFilterTaxId] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  const token = localStorage.getItem("taxagent_token");
-  const authHeaders = {
-    Authorization: `Bearer ${token}`
-  };
-
   const datesInvalid = useMemo(() => {
-    return filterFrom && filterTo && filterFrom > filterTo;
+    if (!filterFrom || !filterTo) return false;
+    return new Date(filterFrom) > new Date(filterTo);
   }, [filterFrom, filterTo]);
+
+  /* ================= LOAD DATA ================= */
 
   const loadTaxes = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/taxes`, {
-        headers: authHeaders
-      });
+      const res = await api.get("/taxes");
       setTaxes(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load taxes:", err);
     }
   };
 
@@ -46,99 +51,170 @@ export default function TaxReportsPage() {
       if (filterFrom) params.fromDate = filterFrom;
       if (filterTo) params.toDate = filterTo;
 
-      const res = await axios.get(`${API_URL}/api/tax/reports`, {
-        headers: authHeaders,
-        params
-      });
+      const res = await api.get("/tax/reports", { params });
       setReports(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load reports:", err);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      loadTaxes();
-      loadReports();
-    }
+    loadTaxes();
+    loadReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
-  const recalc = (base, rate) => {
-    const b = Number(base);
-    const r = Number(rate);
-    if (Number.isNaN(b) || Number.isNaN(r)) {
-      setTaxAmount(0);
-      setTotalAmount(0);
-      return;
-    }
-    const t = Number(((b * r) / 100).toFixed(2));
-    const total = Number((b + t).toFixed(2));
-    setTaxAmount(t);
-    setTotalAmount(total);
+  /* ================= CALCULATIONS ================= */
+
+  useEffect(() => {
+    const t = taxes.find((x) => String(x.id) === String(selectedTaxId));
+    setTaxRate(t ? Number(t.rate || 0) : 0);
+  }, [selectedTaxId, taxes]);
+
+  useEffect(() => {
+    const base = Number(baseAmount || 0);
+    const rate = Number(taxRate || 0);
+    const amount = (base * rate) / 100;
+
+    setTaxAmount(Number.isFinite(amount) ? amount : 0);
+    setTotalAmount(Number.isFinite(base + amount) ? base + amount : 0);
+  }, [baseAmount, taxRate]);
+
+  /* ================= MENU CLOSE ================= */
+
+  useEffect(() => {
+    const close = () => setOpenMenuId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
+  /* ================= CRUD ================= */
+
+  const handleEditReport = (report) => {
+    if (report.status !== "заплановано") return;
+
+    setEditingReportId(report.id);
+    setSelectedTaxId(report.tax_definition_id);
+    setBaseAmount(report.base_amount);
+    setAddress(report.address || "");
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleChangeTaxNew = (e) => {
-    const id = e.target.value;
-    setSelectedTaxId(id);
-    const def = taxes.find((t) => String(t.id) === id);
-    if (def) {
-      setTaxRate(def.rate);
-      recalc(baseAmount, def.rate);
-    } else {
-      setTaxRate(0);
-      recalc(baseAmount, 0);
-    }
-  };
+  const handleDeleteReport = async (id) => {
+    if (!window.confirm("Ви впевнені, що хочете видалити декларацію?")) return;
 
-  const handleChangeBase = (e) => {
-    const value = e.target.value;
-    setBaseAmount(value);
-    recalc(value, taxRate);
+    try {
+      await api.delete(`/tax/reports/${id}`);
+      await loadReports();
+    } catch (err) {
+      console.error(err);
+      alert(err?.response?.data?.error || "Не вдалося видалити декларацію");
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
     if (!selectedTaxId) {
       setError("Оберіть тип податку");
       return;
     }
-    if (!baseAmount) {
+
+    const base = Number(baseAmount);
+    if (!Number.isFinite(base) || base <= 0) {
       setError("Введіть базову суму");
       return;
     }
+
     try {
-      await axios.post(
-        `${API_URL}/api/tax/reports`,
-        {
+      if (editingReportId) {
+        // UPDATE
+        await api.patch(`/tax/reports/${editingReportId}`, {
           taxDefinitionId: Number(selectedTaxId),
-          baseAmount: Number(baseAmount),
-          address: address || undefined
-        },
-        { headers: authHeaders }
-      );
-      setBaseAmount("");
-      setTaxRate(0);
-      setTaxAmount(0);
-      setTotalAmount(0);
+          baseAmount: base,
+          address: address || null,
+        });
+      } else {
+        // CREATE
+        await api.post("/tax/reports", {
+          taxDefinitionId: Number(selectedTaxId),
+          baseAmount: base,
+          address: address || null,
+        });
+      }
+
       setSelectedTaxId("");
+      setBaseAmount("");
       setAddress("");
+      setEditingReportId(null);
+
       await loadReports();
     } catch (err) {
-      console.error(err);
-      if (err.response && err.response.data && err.response.data.error) {
-        setError(err.response.data.error);
-      } else {
-        setError("Не вдалося створити декларацію");
-      }
+      console.error(err?.response?.data || err);
+      setError(err?.response?.data?.error || "Не вдалося зберегти декларацію");
     }
   };
 
+  /* ================= SIGN & SEND (MOCK) ================= */
+
+  const openSignModal = (report) => {
+    if (report.status !== "заплановано") return;
+    setSignModalReport(report);
+    setSignKey("");
+    setSignError("");
+    setSignSuccess("");
+  };
+
+  const closeSignModal = () => {
+    setSignModalReport(null);
+    setSignKey("");
+    setSignError("");
+    setSignSuccess("");
+    setSignLoading(false);
+  };
+
+  const handleSignSend = async (e) => {
+    e.preventDefault();
+    if (!signModalReport) return;
+
+    setSignError("");
+    setSignSuccess("");
+
+    const key = String(signKey || "").trim();
+    if (!key || key.length < 6) {
+      setSignError("Введіть тестовий ключ (мінімум 6 символів)");
+      return;
+    }
+
+    try {
+      setSignLoading(true);
+      const res = await api.post(`/tax/reports/${signModalReport.id}/sign-send`, {
+        key,
+      });
+
+      await loadReports();
+
+      const hash = res?.data?.signatureHash;
+      setSignSuccess(
+        hash
+          ? `Успішно підписано та “відправлено”. Хеш підпису: ${hash.slice(0, 16)}…`
+          : "Успішно підписано та “відправлено”."
+      );
+    } catch (err) {
+      console.error(err?.response?.data || err);
+      setSignError(err?.response?.data?.error || "Не вдалося підписати декларацію");
+    } finally {
+      setSignLoading(false);
+    }
+  };
+
+  /* ================= FILTERS ================= */
+
   const handleApplyFilters = async (e) => {
     e.preventDefault();
-    if (datesInvalid) return;
-    await loadReports();
+    if (!datesInvalid) await loadReports();
   };
 
   const handleResetFilters = async () => {
@@ -148,200 +224,274 @@ export default function TaxReportsPage() {
     await loadReports();
   };
 
+  /* ================= PDF ================= */
+
   const handleExportOfficialPdf = (id) => {
-    const t = localStorage.getItem("taxagent_token");
-    if (!t) return;
-    const url = `${API_URL}/api/tax/reports/${id}/pdf?token=${encodeURIComponent(
-      t
+    const token = localStorage.getItem("taxagent_token");
+    if (!token) return;
+
+    const url = `http://localhost:5000/api/tax/reports/${id}/pdf?token=${encodeURIComponent(
+      token
     )}`;
     window.open(url, "_blank");
   };
 
+  /* ================= RENDER ================= */
+
   return (
     <div className="page">
-      <div className="card">
-        <div className="card-title">Нова декларація</div>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Тип податку</label>
-            <select
-              className="form-input"
-              value={selectedTaxId}
-              onChange={handleChangeTaxNew}
-              required
-            >
-              <option value="">Оберіть податок</option>
-              {taxes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.rate}%)
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Базова сума</label>
-            <input
-              className="form-input"
-              type="number"
-              step="0.01"
-              value={baseAmount}
-              onChange={handleChangeBase}
-              placeholder="Наприклад: 100000"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">
-              Адреса об&apos;єкта оподаткування (опційно)
-            </label>
-            <input
-              className="form-input"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="м. Київ, вул. Прикладна, 1"
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Ставка, %</label>
-            <input
-              className="form-input"
-              type="number"
-              value={taxRate}
-              readOnly
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Сума податку</label>
-            <input
-              className="form-input"
-              type="number"
-              value={taxAmount}
-              readOnly
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Усього до сплати</label>
-            <input
-              className="form-input"
-              type="number"
-              value={totalAmount}
-              readOnly
-            />
-          </div>
-          {error && <div className="error-text">{error}</div>}
-          <button type="submit" className="btn btn-primary">
-            Зберегти декларацію
-          </button>
-        </form>
-      </div>
+      {signModalReport && (
+        <div className="modal-backdrop" onClick={closeSignModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Підписати та відправити</div>
+            <div className="modal-subtitle">
+              Декларація від {new Date(signModalReport.created_at).toLocaleDateString("uk-UA")} • {signModalReport.tax_name || signModalReport.tax_type || "—"}
+            </div>
 
-      <div className="card">
-        <div className="card-title">Фільтри</div>
-        <form onSubmit={handleApplyFilters}>
-          <div className="filters-row">
+            {signError && <div className="error-box">{signError}</div>}
+            {signSuccess && <div className="success-box">{signSuccess}</div>}
+
+            <form onSubmit={handleSignSend}>
+              <div className="form-group">
+                <label className="form-label">Тестовий ключ</label>
+                <input
+                  className="form-input"
+                  type="password"
+                  value={signKey}
+                  onChange={(e) => setSignKey(e.target.value)}
+                  disabled={signLoading || Boolean(signSuccess)}
+                  placeholder="Введіть будь-який ключ…"
+                />
+                <div className="modal-hint">
+                  Введіть ключ доступу в стандарті SHA-256
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeSignModal}
+                  disabled={signLoading}
+                >
+                  Закрити
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={signLoading || Boolean(signSuccess)}
+                >
+                  {signSuccess
+                  ? "Підписано"
+                  : signLoading
+                    ? "Підписання…"
+                    : "Підписати"}
+
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="tax-reports-layout">
+
+        {/* LEFT */}
+        <div className="card_user declaration-form">
+          <div className="card-title">Нова декларація</div>
+
+          {error && <div className="error-box">{error}</div>}
+
+          <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label className="form-label">Тип податку</label>
               <select
                 className="form-input"
-                value={filterTaxId}
-                onChange={(e) => setFilterTaxId(e.target.value)}
+                value={selectedTaxId}
+                onChange={(e) => setSelectedTaxId(e.target.value)}
               >
-                <option value="">Усі</option>
+                <option value="">Оберіть податок</option>
                 {taxes.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {t.name} ({t.code})
                   </option>
                 ))}
               </select>
             </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Базова сума (грн)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  value={baseAmount}
+                  onChange={(e) => setBaseAmount(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Ставка (%)</label>
+                <input className="form-input" value={taxRate} disabled />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Сума податку</label>
+                <input className="form-input" value={taxAmount.toFixed(2)} disabled />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Разом до сплати</label>
+                <input className="form-input" value={totalAmount.toFixed(2)} disabled />
+              </div>
+            </div>
+
             <div className="form-group">
-              <label className="form-label">Дата з</label>
+              <label className="form-label">Адреса (опційно)</label>
               <input
                 className="form-input"
-                type="date"
-                value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
               />
             </div>
-            <div className="form-group">
-              <label className="form-label">Дата по</label>
-              <input
-                className="form-input"
-                type="date"
-                value={filterTo}
-                onChange={(e) => setFilterTo(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <button type="submit" className="btn btn-primary">
-                Застосувати
+
+            <div className="form-actions-center">
+              <button className="btn btn-primary" type="submit">
+                {editingReportId ? "Зберегти зміни" : "Створити декларацію"}
               </button>
             </div>
-            <div className="form-group">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleResetFilters}
-              >
+          </form>
+        </div>
+
+        {/* RIGHT */}
+        <div className="card_user declarations-list">
+          <div className="card-title">Мої декларації</div>
+
+          <form onSubmit={handleApplyFilters} className="filters">
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Податок</label>
+                <select
+                  className="form-input"
+                  value={filterTaxId}
+                  onChange={(e) => setFilterTaxId(e.target.value)}
+                >
+                  <option value="">Всі</option>
+                  {taxes.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Від</label>
+                <input
+                  className="form-input"
+                  type="date"
+                  lang="uk-UA"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">До</label>
+                <input
+                  className="form-input"
+                  type="date"
+                  lang="uk-UA"
+                  value={filterTo}
+                  onChange={(e) => setFilterTo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="btn-row">
+              <button className="btn btn-secondary" type="submit">Застосувати</button>
+              <button className="btn btn-secondary" type="button" onClick={handleResetFilters}>
                 Скинути
               </button>
             </div>
-          </div>
-        </form>
-        {datesInvalid && (
-          <div className="error-text" style={{ marginTop: 6 }}>
-            Дата &quot;до&quot; не може бути раніше, ніж дата &quot;з&quot;.
-          </div>
-        )}
-      </div>
+          </form>
 
-      <div className="card">
-        <div className="card-title">Мої декларації</div>
-        {reports.length === 0 ? (
-          <div className="muted-text">Поки що немає декларацій</div>
-        ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>№ декларації</th>
-                <th>Тип податку</th>
+                <th>Дата</th>
+                <th>Податок</th>
                 <th>База</th>
-                <th>Ставка</th>
-                <th>Сума податку</th>
-                <th>Усього</th>
-                <th>Термін сплати</th>
+                <th>Сума</th>
                 <th>Статус</th>
-                <th>Дата створення</th>
-                <th>Дії</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {reports.map((r) => (
+                {reports.map((r) => {
+                const isSubmitted = r.status === "подано";
+
+                return (
                 <tr key={r.id}>
-                  <td>{r.declaration_number || r.id}</td>
-                  <td>{r.tax_type}</td>
-                  <td>{r.base_amount}</td>
-                  <td>{r.tax_rate}%</td>
-                  <td>{r.tax_amount}</td>
-                  <td>{r.total_amount}</td>
-                  <td>{r.due_date || "-"}</td>
-                  <td>{r.status}</td>
-                  <td>{r.created_at}</td>
+                  <td>{new Date(r.created_at).toLocaleDateString("uk-UA")}</td>
+                  <td>{r.tax_name || r.tax_type || "-"}</td>
+                  <td>{Number(r.base_amount).toFixed(2)}</td>
+                  <td>{Number(r.tax_amount).toFixed(2)}</td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => handleExportOfficialPdf(r.id)}
-                    >
-                      Офіційний PDF
+                    <span className={`status-pill status-${r.status}`}>{r.status}</span>
+                  </td>
+                  <td className="actions-cell">
+                    <button className="btn btn-primary" onClick={() => handleExportOfficialPdf(r.id)}>
+                      PDF
                     </button>
+
+                    <button
+                        className={`btn btn-primary btn-outline ${isSubmitted ? "btn-disabled" : ""}`}
+                        disabled={isSubmitted}
+                        onClick={() => !isSubmitted && openSignModal(r)}
+                      >
+                        Підписати та відправити
+                      </button>
+
+                    <div className="actions-menu-wrapper">
+                      <button
+                        className="actions-menu-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === r.id ? null : r.id);
+                        }}
+                      >
+                        ⋯
+                      </button>
+
+                      {openMenuId === r.id && (
+                        <div className="actions-menu">
+                          <button
+                            className="actions-menu-item"
+                            disabled={r.status !== "заплановано"}
+                            onClick={() => handleEditReport(r)}
+                          >
+                            Редагувати
+                          </button>
+                          <button
+                            className="actions-menu-item danger"
+                            disabled={r.status !== "заплановано"}
+                            onClick={() => handleDeleteReport(r.id)}
+                          >
+                            Видалити
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) })}
             </tbody>
           </table>
-        )}
+        </div>
+
       </div>
+
     </div>
   );
 }

@@ -182,13 +182,45 @@ module.exports = {
     const whereSql = whereParts.length ? "WHERE " + whereParts.join(" AND ") : "";
     const sql = `
       SELECT r.id, r.user_id, r.title, r.tax_type, r.tax_definition_id,
+             COALESCE(td.name, r.tax_type) AS tax_name,
              r.base_amount, r.tax_rate, r.tax_amount, r.total_amount,
              r.due_date, r.status, r.created_at, r.declaration_number, r.address
       FROM tax_reports r
+      LEFT JOIN tax_definitions td ON td.id = r.tax_definition_id
       ${whereSql}
       ORDER BY r.created_at DESC, r.id DESC
     `;
     return db.prepare(sql).all(...params);
+  },
+
+  getTaxReportById(id) {
+    return db.prepare("SELECT * FROM tax_reports WHERE id = ?").get(id);
+  },
+
+  updateTaxReport(id, fields) {
+    // Only update allowed columns
+    db.prepare(
+      `UPDATE tax_reports
+       SET title = ?, tax_type = ?, tax_definition_id = ?,
+           base_amount = ?, tax_rate = ?, tax_amount = ?, total_amount = ?,
+           due_date = ?, address = ?
+       WHERE id = ?`
+    ).run(
+      fields.title,
+      fields.tax_type,
+      fields.tax_definition_id,
+      fields.base_amount,
+      fields.tax_rate,
+      fields.tax_amount,
+      fields.total_amount,
+      fields.due_date || null,
+      fields.address || null,
+      id
+    );
+  },
+
+  deleteTaxReport(id) {
+    db.prepare("DELETE FROM tax_reports WHERE id = ?").run(id);
   },
 
   getAdminTaxSummary(opts = {}) {
@@ -244,7 +276,7 @@ module.exports = {
     let active = 0, pending = 0, completed = 0;
     for (const r of byStatus) {
       if (r.status === "заплановано") active = r.cnt;
-      else if (r.status === "на перевірці") pending = r.cnt;
+      else if (r.status === "на перевірці" || r.status === "подано") pending += r.cnt;
       else if (r.status === "завершено") completed = r.cnt;
     }
 

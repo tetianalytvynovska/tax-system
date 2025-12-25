@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import axios from "axios";
 
 import HomePage from "./pages/Home";
@@ -10,6 +17,7 @@ import AdminDashboardPage from "./pages/AdminDashboard";
 import AdminPage from "./pages/Admin";
 import DashboardPage from "./pages/Dashboard";
 import TaxReportsPage from "./pages/TaxReports";
+import UserStatisticsPage from "./pages/UserStatistics";
 
 const API_URL = "http://localhost:5000";
 
@@ -24,22 +32,20 @@ function NavLink({ to, children }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const t = localStorage.getItem("taxagent_token");
+  const [user, setUser] = useState(() => {
     const u = localStorage.getItem("taxagent_user");
-    if (t && u) {
-      setToken(t);
-      try {
-        setUser(JSON.parse(u));
-      } catch {
-        setUser(null);
-      }
+    if (!u) return null;
+    try {
+      return JSON.parse(u);
+    } catch {
+      return null;
     }
-  }, []);
+  });
+  const [token, setToken] = useState(() => localStorage.getItem("taxagent_token"));
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isPublicLanding = !user && location.pathname === "/";
 
   useEffect(() => {
     if (token) {
@@ -57,7 +63,7 @@ export default function App() {
     if (payload.user && payload.user.role === "Administrator") {
       navigate("/admin");
     } else {
-      navigate("/dashboard");
+      navigate("/statistics");
     }
   };
 
@@ -66,50 +72,65 @@ export default function App() {
     setToken(null);
     localStorage.removeItem("taxagent_token");
     localStorage.removeItem("taxagent_user");
-    navigate("/login");
+    navigate("/");
   };
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="app-logo">TaxAgent</div>
-        <nav className="app-nav">
-          <NavLink to="/">Головна</NavLink>
-          {user && user.role === "Administrator" && (
-            <>
-              <NavLink to="/admin">Адмін дашборд</NavLink>
-              <NavLink to="/admin-taxes">Довідники та звітність</NavLink>
-            </>
-          )}
-          {user && user.role !== "Administrator" && (
-            <>
-              <NavLink to="/dashboard">Кабінет</NavLink>
-              <NavLink to="/reports">Звіти</NavLink>
-            </>
-          )}
-          {!user && (
-            <>
-              <NavLink to="/login">Вхід</NavLink>
-              <NavLink to="/register">Реєстрація</NavLink>
-            </>
-          )}
-        </nav>
-        <div>
-          {user && (
-            <>
-              <span style={{ fontSize: 12, marginRight: 8 }}>
-                {user.email} ({user.role === "Administrator" ? "адмін" : "користувач"})
-              </span>
+      {!isPublicLanding && (
+        <header className="app-header">
+          <div className="app-logo">TaxAgent</div>
+          <nav className="app-nav">
+            {!user && <NavLink to="/">Головна</NavLink>}
+
+            {user && user.role === "Administrator" && (
+              <>
+                <NavLink to="/admin">Адмін дашборд</NavLink>
+                <NavLink to="/admin-taxes">Довідники та звітність</NavLink>
+              </>
+            )}
+
+            {user && user.role !== "Administrator" && (
+              <>
+                <NavLink to="/statistics">Home</NavLink>
+                <NavLink to="/reports">Декларації</NavLink>
+                <NavLink to="/dashboard">Дашборди та розрахунки</NavLink>
+              </>
+            )}
+
+            {!user && (
+              <>
+                <NavLink to="/login">Вхід</NavLink>
+                <NavLink to="/register">Реєстрація</NavLink>
+              </>
+            )}
+          </nav>
+
+          <div>
+            {user && (
               <button className="btn btn-secondary" onClick={handleLogout}>
                 Вийти
               </button>
-            </>
-          )}
-        </div>
-      </header>
-      <main className="app-main">
+            )}
+          </div>
+        </header>
+      )}
+
+      <main className={isPublicLanding ? "landing-main" : "app-main"}>
         <Routes>
-          <Route path="/" element={<HomePage user={user} />} />
+          <Route
+            path="/"
+            element={
+              user ? (
+                <Navigate
+                  to={user.role === "Administrator" ? "/admin" : "/dashboard"}
+                  replace
+                />
+              ) : (
+                <HomePage />
+              )
+            }
+          />
           <Route path="/login" element={<LoginPage onAuth={handleAuth} />} />
           <Route path="/register" element={<RegisterPage onAuth={handleAuth} />} />
           <Route
@@ -172,11 +193,27 @@ export default function App() {
               )
             }
           />
+
+          <Route
+            path="/statistics"
+            element={
+              user ? (
+                user.role === "Administrator" ? (
+                  <AdminDashboardPage />
+                ) : (
+                  <UserStatisticsPage />
+                )
+              ) : (
+                <LoginPage onAuth={handleAuth} />
+              )
+            }
+          />
         </Routes>
       </main>
-      <footer className="app-footer">
-        TaxAgent · демоверсія для дипломного проєкту
-      </footer>
+
+      {!isPublicLanding && (
+        <footer className="app-footer">TaxAgent · демоверсія інформаційної системи супроводу податкової звітності фізичних осіб</footer>
+      )}
     </div>
   );
 }

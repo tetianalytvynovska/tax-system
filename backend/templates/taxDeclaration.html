@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Податкова декларація</title>
+  <style>
+    @font-face {
+      font-family: 'DejaVuSans';
+      src: url('file:///{{FONT_PATH}}') format('truetype');
+    }
+    body {
+      font-family: 'DejaVuSans', Arial, sans-serif;
+      font-size: 12px;
+      margin: 40px;
+    }
+    h1, h2 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .section {
+      margin-top: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 6px;
+      text-align: center;
+    }
+    .right {
+      text-align: right;
+    }
+    .sign {
+      margin-top: 50px;
+      display: flex;
+      justify-content: space-between;
+    }
+  
+.stamp {
+  margin-top: 25px;
+  padding: 12px;
+  border: 2px solid #000;
+  text-align: center;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stamp small {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: normal;
+  text-transform: none;
+}
+</style>
+
+</head>
+<body>
+
+<h1>Податкова декларація</h1>
+<h2>{{taxName}}</h2>
+
+<div class="section">
+  <b>Платник податку:</b> {{userName}} <br/>
+  <b>ІПН:</b> {{taxId}} <br/>
+  <b>Email:</b> {{email}}
+</div>
+
+<div class="section">
+  <b>Номер декларації:</b> {{declarationNumber}} <br/>
+  <b>Дата створення:</b> {{createdAt}}
+</div>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th>База оподаткування</th>
+        <th>Ставка (%)</th>
+        <th>Сума податку</th>
+        <th>Всього до сплати</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{baseAmount}}</td>
+        <td>{{rate}}</td>
+        <td>{{taxAmount}}</td>
+        <td>{{totalAmount}}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section right">
+  <b>Термін сплати:</b> {{dueDate}}
+</div>
+
+<div class="sign">
+  <div>______________________<br/>Підпис платника</div>
+  <div>{{userName}}<br/>{{createdAt}}</div>
+</div>
+
+<p style="margin-top:40px; text-align:center;">
+  Сформовано автоматично в системі <b>TAXAGENT</b>
+</p>
+
+</body>
+</html>

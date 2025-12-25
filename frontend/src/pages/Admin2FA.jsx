@@ -38,7 +38,7 @@ export default function Admin2FAPage({ onAuth }) {
 
   return (
     <div className="page" style={{ alignItems: "center" }}>
-      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+      <div className="card_reg" style={{ maxWidth: 420, width: "100%" }}>
         <div className="card-title">Підтвердження входу адміністратора</div>
         <p className="muted-text">{info}</p>
         <form onSubmit={handleSubmit}>

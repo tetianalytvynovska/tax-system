@@ -210,7 +210,8 @@ export default function AdminPage() {
   const exportsDisabled = datesInvalid || !!filterError;
 
   return (
-    <div className="page">
+    <div className="page admin-taxes-page">
+      {/* <div className="admin-taxes-top"> */}
       {/* --- НАЛАШТУВАННЯ ПОДАТКІВ --- */}
       <div className="card">
         <div className="card-title">Налаштування податків</div>
@@ -278,7 +279,7 @@ export default function AdminPage() {
           </div>
 
           {errorTax && <div className="error-text">{errorTax}</div>}
-
+<div style={{ display: "flex", justifyContent: "center", marginTop: "16px" }}>
           <button
             type="submit"
             className="btn btn-primary"
@@ -286,6 +287,7 @@ export default function AdminPage() {
           >
             {editing ? "Зберегти зміни" : "Додати податок"}
           </button>
+          
 
           {editing && (
             <button
@@ -296,13 +298,14 @@ export default function AdminPage() {
               Скасувати
             </button>
           )}
+          </div>
         </form>
       </div>
 
       {/* --- СПИСОК ПОДАТКІВ --- */}
       <div className="card">
         <div className="card-title">Список податків</div>
-
+        
         {loadingTaxes ? (
           <div>Завантаження...</div>
         ) : taxes.length === 0 ? (
@@ -311,8 +314,8 @@ export default function AdminPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Назва</th>
                 <th>Код</th>
+                <th>Назва</th>
                 <th>Ставка, %</th>
                 <th>Термін, днів</th>
                 <th>Опис</th>
@@ -322,24 +325,28 @@ export default function AdminPage() {
             <tbody>
               {taxes.map((t) => (
                 <tr key={t.id}>
-                  <td>{t.name}</td>
                   <td>{t.code}</td>
+                  <td>{t.name}</td>
                   <td>{t.rate}</td>
                   <td>{t.due_days ?? "-"}</td>
                   <td>{t.description}</td>
                   <td>
-                    <button
-                      className="btn btn-link"
-                      onClick={() => startEdit(t)}
-                    >
-                      Редагувати
-                    </button>
-                    <button
-                      className="btn btn-link"
-                      onClick={() => handleDelete(t)}
-                    >
-                      Видалити
-                    </button>
+                    <div className="table-actions">
+                      <button
+                        className="btn btn-link"
+                        type="button"
+                        onClick={() => startEdit(t)}
+                      >
+                        Редагувати
+                      </button>
+                      <button
+                        className="btn btn-link"
+                        type="button"
+                        onClick={() => handleDelete(t)}
+                      >
+                        Видалити
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -347,6 +354,7 @@ export default function AdminPage() {
           </table>
         )}
       </div>
+      {/* </div> */}
 
       {/* --- АГРЕГОВАНА ЗВІТНІСТЬ --- */}
       <div className="card">
@@ -413,17 +421,19 @@ export default function AdminPage() {
               <a
                 href={exportsDisabled ? "#" : buildExportUrl("pdf")}
                 className="btn btn-secondary"
-                style={{
-                  textDecoration: "none",
-                  opacity: exportsDisabled ? 0.5 : 1,
-                  pointerEvents: exportsDisabled ? "none" : "auto"
-                }}
+style={{
+  textAlign: "center",
+  textDecoration: "none",
+  opacity: exportsDisabled ? 0.5 : 1,
+  pointerEvents: exportsDisabled ? "none" : "auto"
+}}
+
               >
-                Офіційний PDF-звіт
+                Загальний PDF-звіт
               </a>
             </div>
 
-            <div className="form-group">
+            {/* <div className="form-group">
               <a
                 href={exportsDisabled ? "#" : buildExportUrl("csv")}
                 className="btn btn-secondary"
@@ -435,7 +445,7 @@ export default function AdminPage() {
               >
                 Експорт Excel (CSV)
               </a>
-            </div>
+            </div> */}
           </div>
         </form>
 
@@ -463,8 +473,8 @@ export default function AdminPage() {
           <table className="table" style={{ marginTop: 12 }}>
             <thead>
               <tr>
-                <th>Тип податку</th>
                 <th>Кількість декларацій</th>
+                <th>Тип податку</th>
                 <th>Сума бази</th>
                 <th>Сума податку</th>
                 <th>Усього</th>
@@ -473,8 +483,8 @@ export default function AdminPage() {
             <tbody>
               {summary.map((row, idx) => (
                 <tr key={idx}>
-                  <td>{row.tax_type || "Без назви"}</td>
                   <td>{row.report_count}</td>
+                  <td>{row.tax_type || "Без назви"}</td>
                   <td>{(row.total_base ?? 0).toFixed(2)}</td>
                   <td>{(row.total_tax ?? 0).toFixed(2)}</td>
                   <td>{(row.total_total ?? 0).toFixed(2)}</td>

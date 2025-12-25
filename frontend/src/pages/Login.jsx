@@ -40,7 +40,7 @@ export default function LoginPage({ onAuth }) {
 
   return (
     <div className="page" style={{ alignItems: "center" }}>
-      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+      <div className="card_reg" style={{ maxWidth: 420, width: "100%" }}>
         <div className="card-title">Вхід до особистого кабінету</div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
